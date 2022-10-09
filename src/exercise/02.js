@@ -10,6 +10,24 @@ import {
   PokemonErrorBoundary,
 } from '../pokemon'
 
+function useSafeDispatch(dispatch) {
+  const mountedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    mountedRef.current = true
+
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  return React.useCallback((...args) => {
+    if (mountedRef.current) {
+      dispatch(...args)
+    }
+  }, [dispatch])
+}
+
 // 🐨 this is going to be our generic asyncReducer
 function asyncReducer(state, action) {
   switch (action.type) {
@@ -31,23 +49,18 @@ function asyncReducer(state, action) {
   }
 }
 
-function useAsync(asyncCallback, initialState, dependencies) {
-    const [state, dispatch] = React.useReducer(asyncReducer, {
+function useAsync(initialState) {
+  const [state, unsafeDispatch] = React.useReducer(asyncReducer, {
     status: 'idle',
     // 🐨 this will need to be "data" instead of "pokemon"
     data: null,
     error: null,
-    ...initialState
+    ...initialState,
   })
 
-  React.useEffect(() => {
-    asyncCallback();
-    // 💰 this first early-exit bit is a little tricky, so let me give you a hint:
-    const promise = asyncCallback()
-    if (!promise) {
-      return
-    }
-    
+  const dispatch = useSafeDispatch(unsafeDispatch);
+
+  const run = React.useCallback(promise => {
     dispatch({type: 'pending'})
     promise.then(
       data => {
@@ -57,38 +70,27 @@ function useAsync(asyncCallback, initialState, dependencies) {
         dispatch({type: 'rejected', error})
       },
     )
-    // 🐨 you'll accept dependencies as an array and pass that here.
-    // 🐨 because of limitations with ESLint, you'll need to ignore
-    // the react-hooks/exhaustive-deps rule. We'll fix this in an extra credit.
-    //eslint-disable-next-line
-  }, dependencies)
+  }, [dispatch])
 
-  return state
+  return {...state, run}
 }
 
 function PokemonInfo({pokemonName}) {
-  // 🐨 move all the code between the lines into a new useAsync function.
-  // 💰 look below to see how the useAsync hook is supposed to be called
-  // 💰 If you want some help, here's the function signature (or delete this
-  // comment really quick if you don't want the spoiler)!
-  // function useAsync(asyncCallback, initialState, dependencies) {/* code in here */}
+  // 💰 destructuring this here now because it just felt weird to call this
+  // "state" still when it's also returning a function called "run" 🙃
+  const {
+    data: pokemon,
+    status,
+    error,
+    run,
+  } = useAsync({status: pokemonName ? 'pending' : 'idle'})
 
-  // -------------------------- start --------------------------
-
-
-
-  
-  // --------------------------- end ---------------------------
-
-  // 🐨 here's how you'll use the new useAsync hook you're writing:
-  const state = useAsync(() => {
+  React.useEffect(() => {
     if (!pokemonName) {
       return
     }
-    return fetchPokemon(pokemonName)
-  }, {status : pokemonName ? 'pending' : 'idle'}, [pokemonName])
-  // 🐨 this will change from "pokemon" to "data"
-  const {data : pokemon, status, error} = state
+    run(fetchPokemon(pokemonName))
+  }, [pokemonName, run])
 
   switch (status) {
     case 'idle':
