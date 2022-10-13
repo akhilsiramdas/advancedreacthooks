@@ -48,8 +48,8 @@ function App() {
     <div>
       <CountProvider>
         <CountDisplay />
+        <Counter />
       </CountProvider>
-      <Counter />
 
     </div>
   )
